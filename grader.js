@@ -26,6 +26,7 @@ var program = require('commander');
 var cheerio = require('cheerio');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT = "http://immense-gorge-4383.herokuapp.com/";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -35,6 +36,17 @@ var assertFileExists = function(infile) {
     }
     return instr;
 };
+
+var assertLinkExists = function(url) {
+    var link = url.toString();
+    var url = require('url');
+    try {
+       var queryData = url.parse(link).query;
+       return queryData;
+    } catch (e) {
+       console.log(e);
+    }
+}
 
 var cheerioHtmlFile = function(htmlfile) {
     return cheerio.load(fs.readFileSync(htmlfile));
@@ -63,12 +75,44 @@ var clone = function(fn) {
 
 if(require.main == module) {
     program
-        .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists))
+        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists))
+        .option('-u, --url <link>', 'url link')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+
+    if (program.file) {
+       var checkJson = checkHtmlFile(program.file, program.checks);
+       var outJson = JSON.stringify(checkJson, null, 4);
+       console.log(outJson);
+    } else if (program.url) {
+       var link = program.url.toString();
+       var http = require ('http');
+       var content = ""; var loaded = 0;
+       http.get(link, function(res) {
+        // console.log("Got response: " + res.statusCode);
+        res.on('data', function (chunk) {
+          if (loaded == 0) {
+             // res.on enterd 2x!
+             content = chunk; loaded = 1;
+          }
+          // console.log('BODY: ' + chunk);
+       });
+      }).on('error', function(e) {
+       console.log("Got error: " + e.message);
+      });
+
+      var $ = cheerio.load(content);
+      var checks = loadChecks(program.checks).sort();
+      var out = {};
+      for(var ii in checks) {
+         var present = $(checks[ii]).length > 0;
+         out[checks[ii]] = present;
+      }
+      var outJson = JSON.stringify(out, null, 4);
+      console.log(outJson);
+    } else {
+       console.log("Error: must specify --url or --file");
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
